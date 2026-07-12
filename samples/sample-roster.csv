@@ -1,0 +1,6 @@
+Name,EmployeeId,CompletedPrerequisites
+John Smith,E1001,Safety Orientation;Security Clearance;Fundamentals Course
+Maria Lopez,E1002,Safety Orientation
+David Chen,E1003,Safety Orientation;Security Clearance;Medical Screening;Fundamentals Course
+Priya Patel,E1004,Safety Orientation;Security Clearance
+"Wright, Samuel",E1005,Fundamentals Course
