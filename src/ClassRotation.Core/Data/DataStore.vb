@@ -40,12 +40,38 @@ Namespace Data
             Try
                 Dim json = File.ReadAllText(_path)
                 Dim data = JsonSerializer.Deserialize(Of AppData)(json, _options)
-                Return If(data, New AppData())
+                data = If(data, New AppData())
+                MigrateClasses(data)
+                Return data
             Catch ex As Exception
                 ' Corrupt or unreadable file: fall back to an empty data set rather than crashing.
                 Return New AppData()
             End Try
         End Function
+
+        ''' <summary>
+        ''' Upgrades data saved before the two-phase model: a class that only has the legacy
+        ''' StartDate/EndDate span (no academics phase set) has its academics phase populated,
+        ''' and an OJT-typed class is treated as hands-on.
+        ''' </summary>
+        Private Shared Sub MigrateClasses(data As AppData)
+            For Each c In data.Classes
+                Dim hasPhase = c.AcademicsEnd > c.AcademicsStart
+                If Not hasPhase AndAlso c.EndDate > c.StartDate Then
+                    If c.Type = ClassType.OJT Then
+                        c.AcademicsStart = c.StartDate
+                        c.AcademicsEnd = c.StartDate
+                        c.HasHandsOn = True
+                        c.HandsOnStart = c.StartDate
+                        c.HandsOnEnd = c.EndDate
+                    Else
+                        c.AcademicsStart = c.StartDate
+                        c.AcademicsEnd = c.EndDate
+                    End If
+                    c.RecomputeSpan()
+                End If
+            Next
+        End Sub
 
         Public Sub Save(data As AppData)
             Dim dir = Path.GetDirectoryName(_path)

@@ -4,15 +4,25 @@ A Windows desktop application (VB.NET / WinForms, .NET 8) for planning training 
 across the year. It schedules multiple classes with start/end dates, imports class rosters,
 flags each student **Green** (prerequisites met) or **Red** (prerequisites not met) based on a
 configurable prerequisite list, checks whether instructors are free to host a class given their
-leave, and shows a visual timeline that separates **classroom Academics** from **On-the-Job
-Training (OJT)**.
+leave, and shows a visual timeline where each class bar is split into its **classroom Academics**
+phase and its **hands-on (On-the-Job Training)** phase.
 
 ## Features
 
-- **Yearly timeline** – Gantt-style view of every class across the year, colour-coded by type,
-  with Academics and OJT shown in separate lanes for easy comparison. A dashed marker shows today.
-- **Class scheduling** – create classes with a name, type (Academics / OJT), start and end dates,
-  assigned instructor, and the prerequisites required to attend.
+- **Yearly timeline** – Gantt-style view of every class across the year. Each class is one bar
+  split into an Academics phase (blue) followed by an optional Hands-on phase (orange). A dashed
+  marker shows today.
+- **Click-through day-by-day detail** – click any bar on the timeline (or "Open Day-by-Day
+  Schedule…" on the Classes tab) to open a period-by-period timetable for that class. Each training
+  day holds multiple periods (start/end time, phase, subject, instructor, room, notes). A
+  "Generate Weekday Skeleton" button pre-fills weekdays across both phases as an editable starting
+  point.
+- **Class scheduling** – create classes with a name, an Academics phase (start/end), an optional
+  Hands-on phase (start/end), an assigned instructor, and the prerequisites required to attend.
+- **Excel import / export** – File → Export to Excel writes an editable workbook (a **Classes**
+  sheet with phase dates + a **Schedule** sheet of day-by-day periods); File → Import from Excel
+  reads it back. Classes are matched by name, and instructors/prerequisites by name (created if
+  new), so the schedule round-trips between the app and Excel/Google Sheets for editing on the go.
 - **Roster import** – import a class roster from CSV. Students are matched to existing records by
   Employee ID (then name) or created if new, and enrolled in the selected class.
 - **Green / Red prerequisite status** – for the selected class, every enrolled student is shown
@@ -29,7 +39,7 @@ Training (OJT)**.
 ```
 src/
   ClassRotation.Core/     Cross-platform (net8.0) domain + data logic (no UI dependency)
-    Domain/               Models, prerequisite checker, instructor availability
+    Domain/               Models, prerequisite checker, instructor availability, schedule generator
     Data/                 JSON store, CSV roster importer, sample seed data
   ClassRotation/          WinForms app (net8.0-windows): timeline, tabs, dialogs
 tests/

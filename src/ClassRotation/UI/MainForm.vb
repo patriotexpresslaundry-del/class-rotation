@@ -18,9 +18,8 @@ Namespace UI
 
         ' Timeline tab
         Private TimelineTab As TabPage
-        Private Timeline As TimelineControl
+        Private WithEvents Timeline As TimelineControl
         Private WithEvents YearPicker As NumericUpDown
-        Private WithEvents LanesCheck As CheckBox
 
         Public Sub New()
             _store = New DataStore()
@@ -63,9 +62,11 @@ Namespace UI
             Dim menu As New MenuStrip()
             Dim fileMenu As New ToolStripMenuItem("&File")
             Dim saveItem As New ToolStripMenuItem("&Save", Nothing, Sub() SaveData()) With {.ShortcutKeys = Keys.Control Or Keys.S}
+            Dim importItem As New ToolStripMenuItem("&Import from Excel...", Nothing, Sub() ImportFromExcel())
+            Dim exportItem As New ToolStripMenuItem("&Export to Excel...", Nothing, Sub() ExportToExcel())
             Dim openFolderItem As New ToolStripMenuItem("Open &Data Folder", Nothing, Sub() OpenDataFolder())
             Dim exitItem As New ToolStripMenuItem("E&xit", Nothing, Sub() Close())
-            fileMenu.DropDownItems.AddRange({saveItem, openFolderItem, New ToolStripSeparator(), exitItem})
+            fileMenu.DropDownItems.AddRange({saveItem, New ToolStripSeparator(), importItem, exportItem, New ToolStripSeparator(), openFolderItem, New ToolStripSeparator(), exitItem})
             menu.Items.Add(fileMenu)
             MainMenuStrip = menu
             Controls.Add(menu)
@@ -106,10 +107,10 @@ Namespace UI
             YearPicker = New NumericUpDown With {
                 .Minimum = 2000, .Maximum = 2100, .Value = Date.Today.Year,
                 .Location = New Point(50, 8), .Width = 70}
-            LanesCheck = New CheckBox With {
-                .Text = "Separate Academics / OJT lanes", .Checked = True,
-                .Location = New Point(140, 10), .AutoSize = True}
-            toolbar.Controls.AddRange({lbl, YearPicker, LanesCheck})
+            Dim hint As New Label With {
+                .Text = "Tip: click a class bar to open its day-by-day schedule.",
+                .ForeColor = Color.DimGray, .AutoSize = True, .Location = New Point(140, 12)}
+            toolbar.Controls.AddRange({lbl, YearPicker, hint})
 
             Timeline = New TimelineControl With {.Dock = DockStyle.Fill}
 
@@ -119,7 +120,6 @@ Namespace UI
 
         Private Sub RefreshTimeline()
             Timeline.Year = CInt(YearPicker.Value)
-            Timeline.SeparateLanes = LanesCheck.Checked
             Timeline.SetData(_data.Classes, _data.Instructors)
         End Sub
 
@@ -127,8 +127,61 @@ Namespace UI
             RefreshTimeline()
         End Sub
 
-        Private Sub LanesCheck_CheckedChanged(sender As Object, e As EventArgs) Handles LanesCheck.CheckedChanged
+        Private Sub Timeline_ClassClicked(cls As CourseClass) Handles Timeline.ClassClicked
+            OpenClassDetail(cls)
+        End Sub
+
+        ''' <summary>Opens the day-by-day detail view for a class and persists any edits.</summary>
+        Friend Sub OpenClassDetail(cls As CourseClass)
+            If cls Is Nothing Then Return
+            Using dlg As New ClassDetailForm(cls, _data)
+                dlg.ShowDialog(Me)
+            End Using
+            SaveData()
             RefreshTimeline()
+        End Sub
+
+        Private Sub ImportFromExcel()
+            Using dlg As New OpenFileDialog With {
+                .Filter = "Excel Workbook (*.xlsx)|*.xlsx|All files (*.*)|*.*",
+                .Title = "Import schedule from Excel"}
+                If dlg.ShowDialog(Me) <> DialogResult.OK Then Return
+                Try
+                    Dim result = ExcelIO.Import(dlg.FileName, _data)
+                    SaveData()
+                    RefreshAll()
+                    Dim msg = result.Summary
+                    If result.Warnings.Count > 0 Then
+                        msg &= Environment.NewLine & Environment.NewLine &
+                               String.Join(Environment.NewLine, result.Warnings.Take(15))
+                    End If
+                    MessageBox.Show(Me, msg, "Import complete", MessageBoxButtons.OK, MessageBoxIcon.Information)
+                    SetStatus(result.Summary)
+                Catch ex As Exception
+                    MessageBox.Show(Me, $"Could not import that workbook:{Environment.NewLine}{ex.Message}",
+                                    "Import failed", MessageBoxButtons.OK, MessageBoxIcon.Error)
+                End Try
+            End Using
+        End Sub
+
+        Private Sub ExportToExcel()
+            Using dlg As New SaveFileDialog With {
+                .Filter = "Excel Workbook (*.xlsx)|*.xlsx",
+                .Title = "Export schedule to Excel",
+                .FileName = "ClassRotation-Schedule.xlsx"}
+                If dlg.ShowDialog(Me) <> DialogResult.OK Then Return
+                Try
+                    ExcelIO.Export(_data, dlg.FileName)
+                    SetStatus($"Exported to {dlg.FileName}")
+                    If MessageBox.Show(Me, $"Exported to:{Environment.NewLine}{dlg.FileName}{Environment.NewLine}{Environment.NewLine}Open it now?",
+                                       "Export complete", MessageBoxButtons.YesNo, MessageBoxIcon.Information) = DialogResult.Yes Then
+                        Process.Start(New ProcessStartInfo(dlg.FileName) With {.UseShellExecute = True})
+                    End If
+                Catch ex As Exception
+                    MessageBox.Show(Me, $"Could not export:{Environment.NewLine}{ex.Message}",
+                                    "Export failed", MessageBoxButtons.OK, MessageBoxIcon.Error)
+                End Try
+            End Using
         End Sub
 
         Protected Overrides Sub OnFormClosing(e As FormClosingEventArgs)

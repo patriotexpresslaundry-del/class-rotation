@@ -8,6 +8,12 @@ Namespace Domain
         OJT = 1
     End Enum
 
+    ''' <summary>The two phases that make up a class bar: classroom academics then hands-on training.</summary>
+    Public Enum PhaseType
+        Academics = 0
+        HandsOn = 1
+    End Enum
+
     ''' <summary>Whether a student has met the requirements to attend a class.</summary>
     Public Enum PrerequisiteStatus
         ' All required prerequisites completed.
@@ -65,18 +71,73 @@ Namespace Domain
         End Function
     End Class
 
-    ''' <summary>A scheduled class with a date range, type, instructor, prerequisites and roster.</summary>
+    ''' <summary>A single scheduled period (class hour) within a training day.</summary>
+    Public Class ClassPeriod
+        Public Property Id As String = Guid.NewGuid().ToString("N")
+        ''' <summary>Start time of day in 24h "HH:mm" form, e.g. "08:00".</summary>
+        Public Property StartTime As String = "08:00"
+        Public Property EndTime As String = "09:00"
+        Public Property Subject As String = ""
+        Public Property Phase As PhaseType = PhaseType.Academics
+        Public Property InstructorId As String = ""
+        Public Property Room As String = ""
+        Public Property Notes As String = ""
+    End Class
+
+    ''' <summary>One day of a class's detailed schedule, holding its ordered periods.</summary>
+    Public Class ClassDay
+        Public Property [Date] As Date
+        Public Property Periods As New List(Of ClassPeriod)
+    End Class
+
+    ''' <summary>
+    ''' A scheduled class made of an Academics phase optionally followed by a Hands-on phase,
+    ''' with an instructor, prerequisites, roster and an optional day-by-day period schedule.
+    ''' </summary>
     Public Class CourseClass
         Public Property Id As String = Guid.NewGuid().ToString("N")
         Public Property Name As String = ""
         Public Property Type As ClassType = ClassType.Academic
+
+        ' Overall span (kept for availability checks and back-compat); derived from the phases.
         Public Property StartDate As Date = Date.Today
         Public Property EndDate As Date = Date.Today
+
+        ' Phase 1: classroom academics.
+        Public Property AcademicsStart As Date = Date.Today
+        Public Property AcademicsEnd As Date = Date.Today
+        ' Phase 2: hands-on / OJT (optional).
+        Public Property HasHandsOn As Boolean = False
+        Public Property HandsOnStart As Date = Date.Today
+        Public Property HandsOnEnd As Date = Date.Today
+
         Public Property InstructorId As String = ""
         ''' <summary>Prerequisite ids a student must have completed to be "Green" for this class.</summary>
         Public Property RequiredPrerequisiteIds As New List(Of String)
         ''' <summary>Ids of students enrolled / on the imported roster for this class.</summary>
         Public Property EnrolledStudentIds As New List(Of String)
+        ''' <summary>Optional detailed day-by-day, period-by-period schedule.</summary>
+        Public Property Schedule As New List(Of ClassDay)
+
+        ''' <summary>Earliest date across both phases.</summary>
+        Public ReadOnly Property OverallStart As Date
+            Get
+                Return AcademicsStart
+            End Get
+        End Property
+
+        ''' <summary>Latest date across both phases.</summary>
+        Public ReadOnly Property OverallEnd As Date
+            Get
+                Return If(HasHandsOn AndAlso HandsOnEnd > AcademicsEnd, HandsOnEnd, AcademicsEnd)
+            End Get
+        End Property
+
+        ''' <summary>Refresh the overall span from the phase dates.</summary>
+        Public Sub RecomputeSpan()
+            StartDate = OverallStart
+            EndDate = OverallEnd
+        End Sub
 
         Public Overrides Function ToString() As String
             Return Name
