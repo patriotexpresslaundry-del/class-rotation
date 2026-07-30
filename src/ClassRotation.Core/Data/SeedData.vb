@@ -30,38 +30,45 @@ Namespace Data
             s3.CompletedPrerequisiteIds.AddRange({safety.Id, security.Id, medical.Id, fundamentals.Id})
             data.Students.AddRange({s1, s2, s3})
 
-            Dim academics As New CourseClass With {
-                .Name = "Systems Fundamentals (Academics)",
-                .Type = ClassType.Academic,
-                .StartDate = New Date(year, 3, 3),
-                .EndDate = New Date(year, 3, 28),
-                .InstructorId = alice.Id
-            }
-            academics.RequiredPrerequisiteIds.AddRange({safety.Id, security.Id})
-            academics.EnrolledStudentIds.AddRange({s1.Id, s2.Id, s3.Id})
+            Dim tech1 = TwoPhaseClass("TECH 1", alice.Id,
+                                      New Date(year, 1, 26), New Date(year, 2, 21),
+                                      New Date(year, 2, 22), New Date(year, 5, 5))
+            tech1.RequiredPrerequisiteIds.AddRange({safety.Id, security.Id})
+            tech1.EnrolledStudentIds.AddRange({s1.Id, s2.Id, s3.Id})
+            ' Give the first class a generated day-by-day schedule so the detail view has content.
+            tech1.Schedule = ScheduleGenerator.Generate(tech1)
 
-            Dim ojt As New CourseClass With {
-                .Name = "Field Operations (OJT)",
-                .Type = ClassType.OJT,
-                .StartDate = New Date(year, 4, 7),
-                .EndDate = New Date(year, 5, 16),
-                .InstructorId = bob.Id
-            }
-            ojt.RequiredPrerequisiteIds.AddRange({safety.Id, security.Id, medical.Id, fundamentals.Id})
-            ojt.EnrolledStudentIds.AddRange({s1.Id, s3.Id})
+            Dim mech1 = TwoPhaseClass("MECH 1", bob.Id,
+                                      New Date(year, 1, 26), New Date(year, 2, 21),
+                                      New Date(year, 2, 22), New Date(year, 4, 27))
+            mech1.RequiredPrerequisiteIds.AddRange({safety.Id, security.Id, medical.Id})
+            mech1.EnrolledStudentIds.AddRange({s1.Id, s3.Id})
 
-            Dim advanced As New CourseClass With {
-                .Name = "Advanced Academics",
-                .Type = ClassType.Academic,
-                .StartDate = New Date(year, 7, 7),
-                .EndDate = New Date(year, 7, 25),
-                .InstructorId = alice.Id
-            }
-            advanced.RequiredPrerequisiteIds.AddRange({fundamentals.Id})
-            advanced.EnrolledStudentIds.AddRange({s1.Id, s3.Id})
+            Dim asm2 = TwoPhaseClass("ASM 2", carol.Id,
+                                     New Date(year, 4, 13), New Date(year, 5, 23),
+                                     New Date(year, 5, 24), New Date(year, 8, 8))
+            asm2.RequiredPrerequisiteIds.AddRange({fundamentals.Id})
+            asm2.EnrolledStudentIds.AddRange({s1.Id, s3.Id})
 
-            data.Classes.AddRange({academics, ojt, advanced})
+            data.Classes.AddRange({tech1, mech1, asm2})
             Return data
+        End Function
+
+        ''' <summary>Builds a class with an academics phase followed by a hands-on phase.</summary>
+        Private Function TwoPhaseClass(name As String, instructorId As String,
+                                       acadStart As Date, acadEnd As Date,
+                                       handsStart As Date, handsEnd As Date) As CourseClass
+            Dim c As New CourseClass With {
+                .Name = name,
+                .InstructorId = instructorId,
+                .AcademicsStart = acadStart,
+                .AcademicsEnd = acadEnd,
+                .HasHandsOn = True,
+                .HandsOnStart = handsStart,
+                .HandsOnEnd = handsEnd
+            }
+            c.RecomputeSpan()
+            Return c
         End Function
 
     End Module

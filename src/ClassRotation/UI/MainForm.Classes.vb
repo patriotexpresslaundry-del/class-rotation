@@ -10,9 +10,11 @@ Namespace UI
         Private ClassesTab As TabPage
         Private WithEvents ClassList As ListBox
         Private ClassNameBox As TextBox
-        Private ClassTypeBox As ComboBox
         Private ClassStart As DateTimePicker
         Private ClassEnd As DateTimePicker
+        Private WithEvents ClassHasHandsOn As CheckBox
+        Private ClassHandsStart As DateTimePicker
+        Private ClassHandsEnd As DateTimePicker
         Private ClassInstructorBox As ComboBox
         Private ClassPrereqList As CheckedListBox
         Private ClassAvailabilityLabel As Label
@@ -45,24 +47,33 @@ Namespace UI
             form.ColumnStyles.Add(New ColumnStyle(SizeType.Percent, 100))
 
             ClassNameBox = New TextBox With {.Width = 340}
-            ClassTypeBox = New ComboBox With {.DropDownStyle = ComboBoxStyle.DropDownList, .Width = 200}
-            ClassTypeBox.Items.AddRange({"Academics", "OJT"})
             ClassStart = New DateTimePicker With {.Format = DateTimePickerFormat.Short, .Width = 160}
             ClassEnd = New DateTimePicker With {.Format = DateTimePickerFormat.Short, .Width = 160}
+            ClassHasHandsOn = New CheckBox With {.Text = "Class has a hands-on phase", .AutoSize = True}
+            ClassHandsStart = New DateTimePicker With {.Format = DateTimePickerFormat.Short, .Width = 160}
+            ClassHandsEnd = New DateTimePicker With {.Format = DateTimePickerFormat.Short, .Width = 160}
             ClassInstructorBox = New ComboBox With {.DropDownStyle = ComboBoxStyle.DropDownList, .Width = 260}
             AddHandler ClassInstructorBox.SelectedIndexChanged, Sub() UpdateAvailabilityLabel()
             AddHandler ClassStart.ValueChanged, Sub() UpdateAvailabilityLabel()
             AddHandler ClassEnd.ValueChanged, Sub() UpdateAvailabilityLabel()
+            AddHandler ClassHandsStart.ValueChanged, Sub() UpdateAvailabilityLabel()
+            AddHandler ClassHandsEnd.ValueChanged, Sub() UpdateAvailabilityLabel()
             ClassPrereqList = New CheckedListBox With {.Width = 340, .Height = 150, .CheckOnClick = True}
             ClassAvailabilityLabel = New Label With {.AutoSize = True, .MaximumSize = New Size(400, 0)}
 
             AddRow(form, "Name:", ClassNameBox)
-            AddRow(form, "Type:", ClassTypeBox)
-            AddRow(form, "Start date:", ClassStart)
-            AddRow(form, "End date:", ClassEnd)
+            AddRow(form, "Academics start:", ClassStart)
+            AddRow(form, "Academics end:", ClassEnd)
+            AddRow(form, "Hands-on phase:", ClassHasHandsOn)
+            AddRow(form, "Hands-on start:", ClassHandsStart)
+            AddRow(form, "Hands-on end:", ClassHandsEnd)
             AddRow(form, "Instructor:", ClassInstructorBox)
             AddRow(form, "Instructor status:", ClassAvailabilityLabel)
             AddRow(form, "Required prerequisites:", ClassPrereqList)
+
+            Dim scheduleBtn As New Button With {.Text = "Open Day-by-Day Schedule...", .Width = 220}
+            AddHandler scheduleBtn.Click, Sub() OpenClassDetail(SelectedClass())
+            AddRow(form, "Detailed schedule:", scheduleBtn)
 
             Dim saveBtn As New Button With {.Text = "Save Class", .Width = 120}
             AddHandler saveBtn.Click, AddressOf SaveClass
@@ -97,7 +108,7 @@ Namespace UI
             Dim selectedId = SelectedClass()?.Id
             _suppressClassEvents = True
             ClassList.Items.Clear()
-            For Each c In _data.Classes.OrderBy(Function(x) x.StartDate)
+            For Each c In _data.Classes.OrderBy(Function(x) x.OverallStart)
                 ClassList.Items.Add(c)
             Next
             RefreshInstructorCombo()
@@ -149,7 +160,9 @@ Namespace UI
         Private Sub ClearClassEditor()
             _suppressClassEvents = True
             ClassNameBox.Text = ""
-            ClassTypeBox.SelectedIndex = 0
+            ClassHasHandsOn.Checked = False
+            ClassHandsStart.Enabled = False
+            ClassHandsEnd.Enabled = False
             ClassInstructorBox.SelectedIndex = 0
             For i = 0 To ClassPrereqList.Items.Count - 1
                 ClassPrereqList.SetItemChecked(i, False)
@@ -165,9 +178,13 @@ Namespace UI
             End If
             _suppressClassEvents = True
             ClassNameBox.Text = cls.Name
-            ClassTypeBox.SelectedIndex = If(cls.Type = ClassType.Academic, 0, 1)
-            ClassStart.Value = ClampDate(cls.StartDate)
-            ClassEnd.Value = ClampDate(cls.EndDate)
+            ClassStart.Value = ClampDate(cls.AcademicsStart)
+            ClassEnd.Value = ClampDate(cls.AcademicsEnd)
+            ClassHasHandsOn.Checked = cls.HasHandsOn
+            ClassHandsStart.Value = ClampDate(If(cls.HasHandsOn, cls.HandsOnStart, cls.AcademicsEnd.AddDays(1)))
+            ClassHandsEnd.Value = ClampDate(If(cls.HasHandsOn, cls.HandsOnEnd, cls.AcademicsEnd.AddDays(1)))
+            ClassHandsStart.Enabled = cls.HasHandsOn
+            ClassHandsEnd.Enabled = cls.HasHandsOn
 
             ClassInstructorBox.SelectedIndex = 0
             For i = 1 To ClassInstructorBox.Items.Count - 1
@@ -199,16 +216,26 @@ Namespace UI
                 ClassAvailabilityLabel.ForeColor = Color.Gray
                 Return
             End If
+            Dim spanEnd = If(ClassHasHandsOn.Checked, ClassHandsEnd.Value, ClassEnd.Value)
             Dim probe As New CourseClass With {
                 .Id = If(SelectedClass()?.Id, "probe"),
-                .StartDate = ClassStart.Value, .EndDate = ClassEnd.Value}
+                .StartDate = ClassStart.Value, .EndDate = spanEnd}
             Dim result = InstructorAvailability.Check(ins, probe, _data.Classes)
             ClassAvailabilityLabel.Text = result.Summary
             ClassAvailabilityLabel.ForeColor = If(result.CanHost, Theme.GreenColor, Theme.RedColor)
         End Sub
 
+        Private Sub ClassHasHandsOn_CheckedChanged(sender As Object, e As EventArgs) Handles ClassHasHandsOn.CheckedChanged
+            ClassHandsStart.Enabled = ClassHasHandsOn.Checked
+            ClassHandsEnd.Enabled = ClassHasHandsOn.Checked
+            UpdateAvailabilityLabel()
+        End Sub
+
         Private Sub AddClass(sender As Object, e As EventArgs)
-            Dim c As New CourseClass With {.Name = "New Class", .StartDate = Date.Today, .EndDate = Date.Today.AddDays(14)}
+            Dim c As New CourseClass With {
+                .Name = "New Class",
+                .AcademicsStart = Date.Today, .AcademicsEnd = Date.Today.AddDays(14)}
+            c.RecomputeSpan()
             _data.Classes.Add(c)
             RefreshClassesTab()
             SelectClassById(c.Id)
@@ -219,13 +246,20 @@ Namespace UI
             Dim cls = SelectedClass()
             If cls Is Nothing Then Return
             If ClassEnd.Value.Date < ClassStart.Value.Date Then
-                MessageBox.Show(Me, "End date cannot be before start date.", "Invalid dates", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+                MessageBox.Show(Me, "Academics end date cannot be before its start date.", "Invalid dates", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+                Return
+            End If
+            If ClassHasHandsOn.Checked AndAlso ClassHandsEnd.Value.Date < ClassHandsStart.Value.Date Then
+                MessageBox.Show(Me, "Hands-on end date cannot be before its start date.", "Invalid dates", MessageBoxButtons.OK, MessageBoxIcon.Warning)
                 Return
             End If
             cls.Name = ClassNameBox.Text.Trim()
-            cls.Type = If(ClassTypeBox.SelectedIndex = 1, ClassType.OJT, ClassType.Academic)
-            cls.StartDate = ClassStart.Value.Date
-            cls.EndDate = ClassEnd.Value.Date
+            cls.AcademicsStart = ClassStart.Value.Date
+            cls.AcademicsEnd = ClassEnd.Value.Date
+            cls.HasHandsOn = ClassHasHandsOn.Checked
+            cls.HandsOnStart = ClassHandsStart.Value.Date
+            cls.HandsOnEnd = ClassHandsEnd.Value.Date
+            cls.RecomputeSpan()
             Dim ins = TryCast(ClassInstructorBox.SelectedItem, Instructor)
             cls.InstructorId = If(ins?.Id, "")
             cls.RequiredPrerequisiteIds.Clear()

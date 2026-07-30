@@ -8,9 +8,9 @@ Imports ClassRotation.Domain
 Namespace UI
 
     ''' <summary>
-    ''' A simple Gantt-style yearly timeline. Each class is drawn as a horizontal bar spanning
-    ''' its start/end dates, colour-coded by type so classroom Academics and OJT are visually
-    ''' distinct. Supports separate lanes so the two training types can be compared at a glance.
+    ''' A Gantt-style yearly timeline. Each class occupies one row and is drawn as a bar split into
+    ''' its Academics phase (blue) and Hands-on phase (orange). Bars are clickable: clicking one
+    ''' raises <see cref="ClassClicked"/> so the caller can open the day-by-day detail view.
     ''' </summary>
     Public Class TimelineControl
         Inherits Panel
@@ -18,12 +18,15 @@ Namespace UI
         Private _classes As New List(Of CourseClass)
         Private _instructors As New Dictionary(Of String, Instructor)
         Private _year As Integer = Date.Today.Year
-        Private _separateLanes As Boolean = True
+        Private ReadOnly _hitAreas As New List(Of (Bounds As Rectangle, Cls As CourseClass))
 
         Private Const LabelWidth As Integer = 210
         Private Const HeaderHeight As Integer = 28
         Private Const RowHeight As Integer = 34
         Private Const TopPad As Integer = 8
+
+        ''' <summary>Raised when the user clicks a class bar (or its label row).</summary>
+        Public Event ClassClicked(cls As CourseClass)
 
         Public Sub New()
             DoubleBuffered = True
@@ -41,19 +44,8 @@ Namespace UI
             End Set
         End Property
 
-        ''' <summary>When true, Academics and OJT are grouped into separate labelled bands.</summary>
-        Public Property SeparateLanes As Boolean
-            Get
-                Return _separateLanes
-            End Get
-            Set(value As Boolean)
-                _separateLanes = value
-                Invalidate()
-            End Set
-        End Property
-
         Public Sub SetData(classes As IEnumerable(Of CourseClass), instructors As IEnumerable(Of Instructor))
-            _classes = classes.OrderBy(Function(x) x.StartDate).ToList()
+            _classes = classes.OrderBy(Function(x) x.OverallStart).ToList()
             _instructors = instructors.ToDictionary(Function(i) i.Id, Function(i) i)
             Invalidate()
         End Sub
@@ -67,8 +59,11 @@ Namespace UI
         Protected Overrides Sub OnPaint(e As PaintEventArgs)
             MyBase.OnPaint(e)
             Dim g = e.Graphics
+            g.TranslateTransform(AutoScrollPosition.X, AutoScrollPosition.Y)
             g.SmoothingMode = SmoothingMode.AntiAlias
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit
+
+            _hitAreas.Clear()
 
             Dim yearStart As New Date(_year, 1, 1)
             Dim yearEnd As New Date(_year, 12, 31)
@@ -77,56 +72,25 @@ Namespace UI
             Dim chartLeft = LabelWidth
             Dim chartWidth = Math.Max(300, Width - LabelWidth - 20)
 
-            DrawMonthGrid(g, chartLeft, chartWidth, yearStart, totalDays)
-
             Dim rowY = HeaderHeight + TopPad
+            For Each cls In _classes
+                DrawClassRow(g, cls, chartLeft, chartWidth, yearStart, totalDays, rowY)
+                rowY += RowHeight
+            Next
 
-            If _separateLanes Then
-                rowY = DrawBand(g, "CLASSROOM ACADEMICS", ClassType.Academic, chartLeft, chartWidth, yearStart, totalDays, rowY)
-                rowY += 6
-                rowY = DrawBand(g, "ON-THE-JOB TRAINING", ClassType.OJT, chartLeft, chartWidth, yearStart, totalDays, rowY)
-            Else
-                For Each cls In _classes
-                    DrawClassBar(g, cls, chartLeft, chartWidth, yearStart, totalDays, rowY)
-                    rowY += RowHeight
-                Next
-            End If
-
-            ' Ensure scrollbars size to content.
+            DrawMonthGrid(g, chartLeft, chartWidth, yearStart, totalDays, rowY)
             AutoScrollMinSize = New Size(chartLeft + chartWidth + 20, rowY + 10)
-
             DrawLegend(g)
         End Sub
 
-        Private Function DrawBand(g As Graphics, title As String, t As ClassType,
-                                  chartLeft As Integer, chartWidth As Integer,
-                                  yearStart As Date, totalDays As Double, startY As Integer) As Integer
-            Dim items = _classes.Where(Function(c) c.Type = t).ToList()
-            Using headerFont As New Font(Font.FontFamily, 8.5F, FontStyle.Bold)
-                Using accent As New SolidBrush(Theme.ColorFor(t))
-                    g.FillRectangle(accent, 6, startY + 6, 6, RowHeight - 12)
-                End Using
-                g.DrawString(title, headerFont, Brushes.DimGray, New PointF(18, startY + 8))
-            End Using
-            Dim rowY = startY + RowHeight
-            If items.Count = 0 Then
-                g.DrawString("(none scheduled)", Font, Brushes.Silver, New PointF(24, rowY + 4))
-                Return rowY + RowHeight
-            End If
-            For Each cls In items
-                DrawClassBar(g, cls, chartLeft, chartWidth, yearStart, totalDays, rowY)
-                rowY += RowHeight
-            Next
-            Return rowY
-        End Function
-
         Private Sub DrawMonthGrid(g As Graphics, chartLeft As Integer, chartWidth As Integer,
-                                  yearStart As Date, totalDays As Double)
+                                  yearStart As Date, totalDays As Double, bottom As Integer)
+            Dim gridBottom = Math.Max(bottom, Height)
             Using gridPen As New Pen(Color.FromArgb(230, 230, 230))
                 For m = 1 To 12
                     Dim monthStart As New Date(_year, m, 1)
                     Dim x = chartLeft + CInt((monthStart - yearStart).TotalDays / totalDays * chartWidth)
-                    g.DrawLine(gridPen, x, HeaderHeight, x, Height)
+                    g.DrawLine(gridPen, x, HeaderHeight, x, gridBottom)
                     g.DrawString(monthStart.ToString("MMM"), Font, Brushes.Gray, New PointF(x + 2, 6))
                 Next
             End Using
@@ -134,52 +98,64 @@ Namespace UI
                 g.DrawLine(border, chartLeft, HeaderHeight, chartLeft + chartWidth, HeaderHeight)
             End Using
 
-            ' Today marker.
             If Date.Today.Year = _year Then
                 Dim tx = chartLeft + CInt((Date.Today - yearStart).TotalDays / totalDays * chartWidth)
                 Using todayPen As New Pen(Color.FromArgb(120, 200, 60, 60), 1)
                     todayPen.DashStyle = DashStyle.Dash
-                    g.DrawLine(todayPen, tx, HeaderHeight, tx, Height)
+                    g.DrawLine(todayPen, tx, HeaderHeight, tx, gridBottom)
                 End Using
             End If
         End Sub
 
-        Private Sub DrawClassBar(g As Graphics, cls As CourseClass,
+        Private Sub DrawClassRow(g As Graphics, cls As CourseClass,
                                  chartLeft As Integer, chartWidth As Integer,
                                  yearStart As Date, totalDays As Double, rowY As Integer)
-            g.DrawString($"{cls.Name}", Font, Brushes.Black, New PointF(6, rowY + 3))
+            g.DrawString(cls.Name, Font, Brushes.Black, New PointF(6, rowY + 3))
             Using subFont As New Font(Font.FontFamily, 7.5F)
                 g.DrawString(InstructorName(cls.InstructorId), subFont, Brushes.Gray, New PointF(6, rowY + 17))
             End Using
 
-            Dim startOffset = Math.Max(0, (cls.StartDate.Date - yearStart).TotalDays)
-            Dim endOffset = Math.Min(totalDays, (cls.EndDate.Date - yearStart).TotalDays + 1)
+            ' Academics segment.
+            Dim acadRect = DrawSegment(g, cls.AcademicsStart, cls.AcademicsEnd, Theme.AcademicColor,
+                                       chartLeft, chartWidth, yearStart, totalDays, rowY)
+            ' Hands-on segment.
+            Dim rowBounds As Rectangle = acadRect
+            If cls.HasHandsOn Then
+                Dim handsRect = DrawSegment(g, cls.HandsOnStart, cls.HandsOnEnd, Theme.OjtColor,
+                                            chartLeft, chartWidth, yearStart, totalDays, rowY)
+                rowBounds = Rectangle.Union(acadRect, handsRect)
+            End If
+
+            ' The whole row (label + bars) is clickable.
+            Dim clickable As New Rectangle(0, rowY, chartLeft + chartWidth, RowHeight)
+            _hitAreas.Add((clickable, cls))
+        End Sub
+
+        Private Function DrawSegment(g As Graphics, startDate As Date, endDate As Date, color As Color,
+                                     chartLeft As Integer, chartWidth As Integer,
+                                     yearStart As Date, totalDays As Double, rowY As Integer) As Rectangle
+            Dim startOffset = Math.Max(0, (startDate.Date - yearStart).TotalDays)
+            Dim endOffset = Math.Min(totalDays, (endDate.Date - yearStart).TotalDays + 1)
             If endOffset <= startOffset Then endOffset = startOffset + 1
 
             Dim x1 = chartLeft + CInt(startOffset / totalDays * chartWidth)
             Dim x2 = chartLeft + CInt(endOffset / totalDays * chartWidth)
-            Dim barRect As New Rectangle(x1, rowY + 6, Math.Max(4, x2 - x1), RowHeight - 14)
+            Dim rect As New Rectangle(x1, rowY + 6, Math.Max(4, x2 - x1), RowHeight - 14)
 
-            Using b As New SolidBrush(Theme.ColorFor(cls.Type))
-                Using path = RoundedRect(barRect, 5)
+            Using b As New SolidBrush(color)
+                Using path = RoundedRect(rect, 5)
                     g.FillPath(b, path)
                 End Using
             End Using
-            Dim label = $"{cls.StartDate:MMM d} - {cls.EndDate:MMM d}"
-            Using lblFont As New Font(Font.FontFamily, 7.5F, FontStyle.Bold)
-                Dim sz = g.MeasureString(label, lblFont)
-                If sz.Width < barRect.Width - 6 Then
-                    g.DrawString(label, lblFont, Brushes.White, New PointF(barRect.X + 4, barRect.Y + 2))
-                End If
-            End Using
-        End Sub
+            Return rect
+        End Function
 
         Private Sub DrawLegend(g As Graphics)
             Dim y = 6
-            Dim x = Width - 190
+            Dim x = Width - 230
             If x < LabelWidth Then Return
             DrawSwatch(g, x, y, Theme.AcademicColor, "Academics")
-            DrawSwatch(g, x + 95, y, Theme.OjtColor, "OJT")
+            DrawSwatch(g, x + 100, y, Theme.OjtColor, "Hands-on")
         End Sub
 
         Private Sub DrawSwatch(g As Graphics, x As Integer, y As Integer, c As Color, text As String)
@@ -187,6 +163,27 @@ Namespace UI
                 g.FillRectangle(b, x, y + 2, 12, 12)
             End Using
             g.DrawString(text, Font, Brushes.Black, New PointF(x + 16, y))
+        End Sub
+
+        Private Function ClassAt(clientPoint As Point) As CourseClass
+            ' Translate client coordinates into the scrolled drawing space.
+            Dim p As New Point(clientPoint.X - AutoScrollPosition.X, clientPoint.Y - AutoScrollPosition.Y)
+            For Each area In _hitAreas
+                If area.Bounds.Contains(p) Then Return area.Cls
+            Next
+            Return Nothing
+        End Function
+
+        Protected Overrides Sub OnMouseClick(e As MouseEventArgs)
+            MyBase.OnMouseClick(e)
+            If e.Button <> MouseButtons.Left Then Return
+            Dim cls = ClassAt(e.Location)
+            If cls IsNot Nothing Then RaiseEvent ClassClicked(cls)
+        End Sub
+
+        Protected Overrides Sub OnMouseMove(e As MouseEventArgs)
+            MyBase.OnMouseMove(e)
+            Cursor = If(ClassAt(e.Location) IsNot Nothing, Cursors.Hand, Cursors.Default)
         End Sub
 
         Private Shared Function RoundedRect(r As Rectangle, radius As Integer) As GraphicsPath

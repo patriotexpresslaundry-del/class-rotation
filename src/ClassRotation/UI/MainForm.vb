@@ -18,9 +18,8 @@ Namespace UI
 
         ' Timeline tab
         Private TimelineTab As TabPage
-        Private Timeline As TimelineControl
+        Private WithEvents Timeline As TimelineControl
         Private WithEvents YearPicker As NumericUpDown
-        Private WithEvents LanesCheck As CheckBox
 
         Public Sub New()
             _store = New DataStore()
@@ -106,10 +105,10 @@ Namespace UI
             YearPicker = New NumericUpDown With {
                 .Minimum = 2000, .Maximum = 2100, .Value = Date.Today.Year,
                 .Location = New Point(50, 8), .Width = 70}
-            LanesCheck = New CheckBox With {
-                .Text = "Separate Academics / OJT lanes", .Checked = True,
-                .Location = New Point(140, 10), .AutoSize = True}
-            toolbar.Controls.AddRange({lbl, YearPicker, LanesCheck})
+            Dim hint As New Label With {
+                .Text = "Tip: click a class bar to open its day-by-day schedule.",
+                .ForeColor = Color.DimGray, .AutoSize = True, .Location = New Point(140, 12)}
+            toolbar.Controls.AddRange({lbl, YearPicker, hint})
 
             Timeline = New TimelineControl With {.Dock = DockStyle.Fill}
 
@@ -119,7 +118,6 @@ Namespace UI
 
         Private Sub RefreshTimeline()
             Timeline.Year = CInt(YearPicker.Value)
-            Timeline.SeparateLanes = LanesCheck.Checked
             Timeline.SetData(_data.Classes, _data.Instructors)
         End Sub
 
@@ -127,7 +125,17 @@ Namespace UI
             RefreshTimeline()
         End Sub
 
-        Private Sub LanesCheck_CheckedChanged(sender As Object, e As EventArgs) Handles LanesCheck.CheckedChanged
+        Private Sub Timeline_ClassClicked(cls As CourseClass) Handles Timeline.ClassClicked
+            OpenClassDetail(cls)
+        End Sub
+
+        ''' <summary>Opens the day-by-day detail view for a class and persists any edits.</summary>
+        Friend Sub OpenClassDetail(cls As CourseClass)
+            If cls Is Nothing Then Return
+            Using dlg As New ClassDetailForm(cls, _data)
+                dlg.ShowDialog(Me)
+            End Using
+            SaveData()
             RefreshTimeline()
         End Sub
 
