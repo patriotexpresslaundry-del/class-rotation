@@ -19,6 +19,10 @@ phase and its **hands-on (On-the-Job Training)** phase.
   point.
 - **Class scheduling** – create classes with a name, an Academics phase (start/end), an optional
   Hands-on phase (start/end), an assigned instructor, and the prerequisites required to attend.
+- **Excel import / export** – File → Export to Excel writes an editable workbook (a **Classes**
+  sheet with phase dates + a **Schedule** sheet of day-by-day periods); File → Import from Excel
+  reads it back. Classes are matched by name, and instructors/prerequisites by name (created if
+  new), so the schedule round-trips between the app and Excel/Google Sheets for editing on the go.
 - **Roster import** – import a class roster from CSV. Students are matched to existing records by
   Employee ID (then name) or created if new, and enrolled in the selected class.
 - **Green / Red prerequisite status** – for the selected class, every enrolled student is shown
